@@ -1,36 +1,44 @@
 
 #include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
 #include <WebSocketClient.h>
-//#include <TimeLib.h>
 #include <Time.h>
+#include <ArduinoJson.h>
 #include <Timer.h>
 
 #define PING_TIME 120
-
-const char* ssid     = "TP-LINK_BE92";
+//
+const char* ssid     = "lala";
 const char* password = "53342140";
 
 char path[] = "/verde/socket/arduino_123";
-char host[] = "2cece6ee.ngrok.io";
+char host[] = "c6431f4a.ngrok.io";
 
 WebSocketClient webSocketClient;
 WiFiClient client;
-  Timer timer;
+Timer timer;
+ESP8266WebServer server(80);
 
 void setup() {
   Serial.begin(9600);
 
-  WiFi.begin(ssid, password);
+  if (createSoftAccessPoint()) {
+      connectToNetwork();
+  }
+
+    WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
+     server.handleClient();
+    Serial.println(WiFi.status());
     delay(500);
     Serial.print(".");
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
+ Serial.println("");
+ Serial.println("WiFi connected");
+ Serial.println("IP address: ");
+ Serial.println(WiFi.localIP());
 
 
   if (client.connect(host, 80)) {
@@ -48,11 +56,14 @@ void setup() {
   }
 
   //PING
-  int tickEvent = timer.every(PING_TIME*1000, sendPing);
+  int tickEvent = timer.every(PING_TIME * 1000, sendPing);
 
 }
 
 void loop() {
+
+
+
   String data;
   time_t t = now();
 
@@ -71,7 +82,7 @@ void loop() {
   } else {
     // TODO
   }
-timer.update();
+  timer.update();
 }
 
 
@@ -81,4 +92,66 @@ void sendPing()
     webSocketClient.sendData("", WS_OPCODE_PING);
     Serial.println("ping...");
   }
+}
+
+boolean createSoftAccessPoint() {
+
+//TODO stop access point after connection
+  Serial.println("Creating Soft Access Point...");
+  boolean ready = WiFi.softAP("arduino_123", "123456789");
+  Serial.println(ready);
+  IPAddress myIP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(myIP);
+
+  return ready;
+}
+
+void connectToNetwork(){
+  server.on("/add_network", handleNetwork);
+  server.begin();
+  Serial.println("HTTP server started");
+}
+
+
+//Handler for the body path
+void handleNetwork() {
+  const size_t capacity = JSON_OBJECT_SIZE(2) + 60;
+  DynamicJsonBuffer jsonBuffer(capacity);
+
+  //Check if body received
+  if (server.hasArg("plain") == false) {
+    server.send(500, "text/plain", "Body not received");
+    return;
+
+  }
+
+  JsonObject& root = jsonBuffer.parseObject(server.arg("plain"));
+
+  ssid = root["ssid"];
+  password = root["pass"];
+
+  Serial.println(ssid);
+  Serial.println(password);
+
+  WiFi.begin(ssid, password);
+
+
+
+  server.send(200, "text/json", createResponse());
+
+}
+
+
+
+  String createResponse(){
+
+    StaticJsonBuffer<200> jsonBufferResp;
+    JsonObject& response = jsonBufferResp.createObject();
+    response["status"] = "OK";
+
+    String json;
+    response.prettyPrintTo(json);
+    return json;
+
 }
